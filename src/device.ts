@@ -28,7 +28,7 @@ export class Device {
     const platform = window.navigator.platform;
     const ua = window.navigator.userAgent;
     const screenWidth = window.screen.width;
-    const screenHeight = window.screen.height;
+    const screenHeight = window.innerHeight;
 
     let android = ua.match(/(Android);?[\s\/]+([\d.]+)?/); // eslint-disable-line
     let ipad = ua.match(/(iPad).*OS\s([\d_]+)/);

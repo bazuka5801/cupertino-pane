@@ -7,6 +7,11 @@ import { Breakpoints } from './breakpoints';
  * Touch start, Touch move, Touch end,
  * Click, Keyboard show, Keyboard hide
  */
+interface ResizeObserver {
+  observe(target: Element): void;
+  unobserve(target: Element): void;
+  disconnect(): void;
+}
 
 export class Events {
 
@@ -19,6 +24,7 @@ export class Events {
   private steps: {posY: number, time: number}[] = [];  
   private inputBluredbyMove: boolean = false;
   private movedByKeyboard: boolean = false;
+  private resizeObserver: ResizeObserver;
   
   
   constructor(private instance: CupertinoPane, 
@@ -60,6 +66,11 @@ export class Events {
 
     // Orientation change + window resize
     window.addEventListener('resize', this.onWindowResizeCb);
+    try {
+      // @ts-ignore
+    this.resizeObserver = new ResizeObserver(this.onWindowResizeCb);
+    this.resizeObserver.observe(document.querySelector('#q-app'))
+    } catch {}
   }
 
   public detachAllEvents() {
@@ -80,6 +91,10 @@ export class Events {
 
     // Orientation change + window resize
     window.removeEventListener('resize', this.onWindowResizeCb);
+    try {
+      // @ts-ignore
+    this.resizeObserver.unobserve(document.querySelector('#q-app'))
+    } catch {}
   }
 
   public resetEvents() {
@@ -203,6 +218,7 @@ export class Events {
   public touchMoveCb = (t) => this.touchMove(t);
   private touchMove(t) {
     const { clientY, clientX, velocityY } = this.getEvetClientYX(t, 'touchmove');
+    // console.log('touch move', 'clientY: ' + clientY, 'clientX: ' + clientX, 'velocityY: ' + velocityY)
 
     // Event emitter
     t.delta = this.steps[0]?.posY - clientY;
@@ -332,6 +348,7 @@ export class Events {
       if (mousePointY <= this.instance.screen_height - this.breakpoints.bottomer) {
         this.instance.preventedDismiss = true; 
         // Emit event with prevent dismiss
+        // console.log('mousepoint tocuhmove dismiss', mousePointY, clientY, this.instance.screen_height)
         this.settings.onWillDismiss({prevented: true} as any);
         this.instance.moveToBreak(this.breakpoints.prevBreakpoint);
         return;
@@ -361,16 +378,18 @@ export class Events {
     let closest = this.breakpoints.getClosestBreakY();
     // Swipe - next (if differ > 10)
     const diff =  this.steps[this.steps.length - 1]?.posY - this.steps[this.steps.length - 2]?.posY;
+    console.log("touchend", 'diff: ' + diff, 'closest: ' + closest, this.instance.getPanelTransformY())
     // Set sensivity lower for web
     const swipeNextSensivity = window.hasOwnProperty('cordova') 
       ? (this.settings.fastSwipeSensivity + 2) : this.settings.fastSwipeSensivity; 
     const fastSwipeNext = (Math.abs(diff) >= swipeNextSensivity);
     if (fastSwipeNext) {
       closest = this.instance.swipeNextPoint(diff, swipeNextSensivity, closest);
-      
+      console.log('FAST SWIPE NEXT FUCK closest: ' + closest, 'diff: '+ diff, 'swipeNextSensivity: ' + swipeNextSensivity)
       // Fast swipe toward bottom - close
       if (this.settings.fastSwipeClose 
-          && this.breakpoints.currentBreakpoint < closest) {      
+          && this.breakpoints.currentBreakpoint < closest) {  
+            console.log("FAST SWIPE DESTROY FUCK")    
         this.instance.destroy({animate:true});
         return;
       }
@@ -387,6 +406,7 @@ export class Events {
 
     this.steps = [];
     this.breakpoints.currentBreakpoint = closest;
+    console.log('setCurrentBreakpoint', closest)
 
     // Event emitter
     this.settings.onDragEnd(t as CustomEvent);
@@ -401,6 +421,8 @@ export class Events {
 
     // Bottom closable
     if (this.settings.bottomClose && closest === this.breakpoints.breaks['bottom']) {
+      console.log("TOUCH END DESTROY FUCK", closest)    
+
       this.instance.destroy({animate:true});
       return;
     }
@@ -466,8 +488,11 @@ export class Events {
 
     this.movedByKeyboard = true;
     this.breakpoints.prevBreakpoint = Object.entries(this.breakpoints.breaks).find(val => val[1] === this.instance.getPanelTransformY())[0];
+    console.log('prevBreakpoint', this.breakpoints.prevBreakpoint )
+    console.log('breaks', this.breakpoints.breaks )
+    console.log('panelTransformY', this.instance.getPanelTransformY())
     let newHeight = this.settings.breaks[this.instance.currentBreak()].height + e.keyboardHeight;
-    
+    console.log('new height', newHeight)
     // Landscape case
     let isLandscape = window.matchMedia('(orientation: landscape)').matches;
     if (isLandscape) {
@@ -477,10 +502,12 @@ export class Events {
     // higher than screen + offsets
     if (newHeight > this.instance.screen_height - 80) {
       newHeight = this.instance.screen_height - 80;
+      console.log('higher than screen + offsets, newHeight:', newHeight)
     }
 
     // Move pane up if new position more than 50px
     if (newHeight - 50 >= this.settings.breaks[this.instance.currentBreak()].height) {
+      console.log('Move pane up if new position more than 50px', newHeight,'currentBreak' + this.instance.currentBreak() )
       this.instance.moveToHeight(newHeight);
     } 
 
@@ -488,8 +515,8 @@ export class Events {
     // Timeout await for keyboard presented
     setTimeout(() => {
       this.instance.setOverflowHeight(e.keyboardHeight - this.settings.topperOverflowOffset);
-      this.instance.overflowEl.scrollTop = (<any>document.activeElement).offsetTop;
-    }, 300);
+      document.activeElement.scrollIntoView({behavior: 'smooth'})
+    }, 250)
   }
 
   /**
@@ -557,7 +584,7 @@ export class Events {
    */
   private fixAndroidResize() {
     if (!this.instance.paneEl) return;
-    const ionApp:any = document.querySelector('ion-app');
+    const ionApp:any = document.querySelector('#q-app');
 
     window.requestAnimationFrame(() => {
       this.instance.wrapperEl.style.width = '100%';

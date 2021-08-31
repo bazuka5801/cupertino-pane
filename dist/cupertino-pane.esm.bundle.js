@@ -1,5 +1,5 @@
 /**
- * Cupertino Pane 1.2.7
+ * Cupertino Pane 1.2.4
  * Multi-functional panes and boards for next generation progressive applications
  * https://github.com/roman-rr/cupertino-pane/
  *
@@ -7,7 +7,7 @@
  *
  * Released under the MIT License
  *
- * Released on: May 8, 2021
+ * Released on: July 15, 2021
  */
 
 /*! *****************************************************************************
@@ -93,7 +93,7 @@ class Device {
         const platform = window.navigator.platform;
         const ua = window.navigator.userAgent;
         const screenWidth = window.screen.width;
-        const screenHeight = window.screen.height;
+        const screenHeight = window.innerHeight;
         let android = ua.match(/(Android);?[\s\/]+([\d.]+)?/); // eslint-disable-line
         let ipad = ua.match(/(iPad).*OS\s([\d_]+)/);
         let ipod = ua.match(/(iPod)(.*OS\s([\d_]+))?/);
@@ -172,10 +172,6 @@ class Device {
     }
 }
 
-/**
- * Touch start, Touch move, Touch end,
- * Click, Keyboard show, Keyboard hide
- */
 class Events {
     constructor(instance, settings, device, breakpoints) {
         this.instance = instance;
@@ -281,6 +277,12 @@ class Events {
         }
         // Orientation change + window resize
         window.addEventListener('resize', this.onWindowResizeCb);
+        try {
+            // @ts-ignore
+            this.resizeObserver = new ResizeObserver(this.onWindowResizeCb);
+            this.resizeObserver.observe(document.querySelector('#q-app'));
+        }
+        catch (_a) { }
     }
     detachAllEvents() {
         if (!this.settings.dragBy) {
@@ -300,6 +302,11 @@ class Events {
         }
         // Orientation change + window resize
         window.removeEventListener('resize', this.onWindowResizeCb);
+        try {
+            // @ts-ignore
+            this.resizeObserver.unobserve(document.querySelector('#q-app'));
+        }
+        catch (_a) { }
     }
     resetEvents() {
         this.detachAllEvents();
@@ -374,6 +381,7 @@ class Events {
     touchMove(t) {
         var _a;
         const { clientY, clientX, velocityY } = this.getEvetClientYX(t, 'touchmove');
+        // console.log('touch move', 'clientY: ' + clientY, 'clientX: ' + clientX, 'velocityY: ' + velocityY)
         // Event emitter
         t.delta = ((_a = this.steps[0]) === null || _a === void 0 ? void 0 : _a.posY) - clientY;
         this.settings.onDrag(t);
@@ -490,6 +498,7 @@ class Events {
             if (mousePointY <= this.instance.screen_height - this.breakpoints.bottomer) {
                 this.instance.preventedDismiss = true;
                 // Emit event with prevent dismiss
+                // console.log('mousepoint tocuhmove dismiss', mousePointY, clientY, this.instance.screen_height)
                 this.settings.onWillDismiss({ prevented: true });
                 this.instance.moveToBreak(this.breakpoints.prevBreakpoint);
                 return;
@@ -512,15 +521,18 @@ class Events {
         let closest = this.breakpoints.getClosestBreakY();
         // Swipe - next (if differ > 10)
         const diff = ((_a = this.steps[this.steps.length - 1]) === null || _a === void 0 ? void 0 : _a.posY) - ((_b = this.steps[this.steps.length - 2]) === null || _b === void 0 ? void 0 : _b.posY);
+        console.log("touchend", 'diff: ' + diff, 'closest: ' + closest, this.instance.getPanelTransformY());
         // Set sensivity lower for web
         const swipeNextSensivity = window.hasOwnProperty('cordova')
             ? (this.settings.fastSwipeSensivity + 2) : this.settings.fastSwipeSensivity;
         const fastSwipeNext = (Math.abs(diff) >= swipeNextSensivity);
         if (fastSwipeNext) {
             closest = this.instance.swipeNextPoint(diff, swipeNextSensivity, closest);
+            console.log('FAST SWIPE NEXT FUCK closest: ' + closest, 'diff: ' + diff, 'swipeNextSensivity: ' + swipeNextSensivity);
             // Fast swipe toward bottom - close
             if (this.settings.fastSwipeClose
                 && this.breakpoints.currentBreakpoint < closest) {
+                console.log("FAST SWIPE DESTROY FUCK");
                 this.instance.destroy({ animate: true });
                 return;
             }
@@ -534,6 +546,7 @@ class Events {
         }
         this.steps = [];
         this.breakpoints.currentBreakpoint = closest;
+        console.log('setCurrentBreakpoint', closest);
         // Event emitter
         this.settings.onDragEnd(t);
         // tap event
@@ -544,6 +557,7 @@ class Events {
         this.instance.checkOverflowAttr(this.breakpoints.currentBreakpoint);
         // Bottom closable
         if (this.settings.bottomClose && closest === this.breakpoints.breaks['bottom']) {
+            console.log("TOUCH END DESTROY FUCK", closest);
             this.instance.destroy({ animate: true });
             return;
         }
@@ -591,7 +605,11 @@ class Events {
         }
         this.movedByKeyboard = true;
         this.breakpoints.prevBreakpoint = Object.entries(this.breakpoints.breaks).find(val => val[1] === this.instance.getPanelTransformY())[0];
+        console.log('prevBreakpoint', this.breakpoints.prevBreakpoint);
+        console.log('breaks', this.breakpoints.breaks);
+        console.log('panelTransformY', this.instance.getPanelTransformY());
         let newHeight = this.settings.breaks[this.instance.currentBreak()].height + e.keyboardHeight;
+        console.log('new height', newHeight);
         // Landscape case
         let isLandscape = window.matchMedia('(orientation: landscape)').matches;
         if (isLandscape) {
@@ -600,17 +618,19 @@ class Events {
         // higher than screen + offsets
         if (newHeight > this.instance.screen_height - 80) {
             newHeight = this.instance.screen_height - 80;
+            console.log('higher than screen + offsets, newHeight:', newHeight);
         }
         // Move pane up if new position more than 50px
         if (newHeight - 50 >= this.settings.breaks[this.instance.currentBreak()].height) {
+            console.log('Move pane up if new position more than 50px', newHeight, 'currentBreak' + this.instance.currentBreak());
             this.instance.moveToHeight(newHeight);
         }
         // Remove offset because on new height no offsets needs
         // Timeout await for keyboard presented
         setTimeout(() => {
             this.instance.setOverflowHeight(e.keyboardHeight - this.settings.topperOverflowOffset);
-            this.instance.overflowEl.scrollTop = document.activeElement.offsetTop;
-        }, 300);
+            document.activeElement.scrollIntoView({ behavior: 'smooth' });
+        }, 250);
     }
     onKeyboardHide(e) {
         // Move back
@@ -661,7 +681,7 @@ class Events {
     fixAndroidResize() {
         if (!this.instance.paneEl)
             return;
-        const ionApp = document.querySelector('ion-app');
+        const ionApp = document.querySelector('#q-app');
         window.requestAnimationFrame(() => {
             this.instance.wrapperEl.style.width = '100%';
             this.instance.paneEl.style.position = 'absolute';
@@ -754,7 +774,7 @@ class Settings {
             simulateTouch: true,
             passiveListeners: true,
             touchMoveStopPropagation: false,
-            touchAngle: null,
+            touchAngle: 45,
             breaks: {},
             zStack: null,
             onDidDismiss: () => { },
